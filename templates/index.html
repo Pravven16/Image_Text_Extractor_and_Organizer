@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Capture and Text Extraction</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        #image-preview {
+            display: none;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            border: 1px solid #ddd;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+    <h1>Image Capture and Text Extraction</h1>
+    
+    <form id="capture-form">
+        <button type="button" id="capture-button">Capture Image</button>
+        <input type="text" id="search-input" placeholder="Search text">
+        <button type="button" id="search-button">Search</button>
+    </form>
+    
+    <div id="image-preview">
+        <canvas id="captured-canvas" style="display: none;"></canvas>
+        <p id="extracted-text"></p>
+        <img id="saved-image" style="max-width: 100%;">
+    </div>
+
+    <table id="data-table">
+        <thead>
+            <tr>
+                <th>Date & Time</th>
+                <th>Name</th>
+                <th>Place</th>
+                <th>Photo</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Captured data rows will be added here -->
+        </tbody>
+    </table>
+    
+    <script>
+        const captureButton = document.getElementById('capture-button');
+        const capturedCanvas = document.getElementById('captured-canvas');
+        const extractedText = document.getElementById('extracted-text');
+        const savedImageElement = document.getElementById('saved-image');
+        const searchInput = document.getElementById('search-input');
+        const searchButton = document.getElementById('search-button');
+        const dataTable = document.getElementById('data-table').getElementsByTagName('tbody')[0];
+        
+        captureButton.addEventListener('click', async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                video.onloadedmetadata = async () => {
+                    capturedCanvas.width = video.videoWidth;
+                    capturedCanvas.height = video.videoHeight;
+                    capturedCanvas.getContext('2d').drawImage(video, 0, 0, capturedCanvas.width, capturedCanvas.height);
+                    stream.getTracks().forEach(track => track.stop());
+
+                    const imageData = capturedCanvas.toDataURL('image/png');
+
+                    // Send the captured image data to the server
+                    const response = await fetch('/capture', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ image_data: imageData }),
+                    });
+
+                    const result = await response.json();
+                    extractedText.textContent = result.extracted_text;
+
+                    // Display the saved image
+                    savedImageElement.src = `data:image/png;base64,${result.image}`;
+                    savedImageElement.style.display = 'block';
+
+                    // Display the captured data in the table
+                    const capturedDataRow = dataTable.insertRow();
+                    const cellTimestamp = capturedDataRow.insertCell(0);
+                    const cellExtractedText = capturedDataRow.insertCell(1);
+                    const cellImage = capturedDataRow.insertCell(2);
+
+                    cellTimestamp.textContent = result.timestamp;
+                    cellExtractedText.textContent = result.extracted_text;
+                    cellImage.innerHTML = `<img src="data:image/png;base64,${result.image}" alt="Captured Image" width="100">`;
+                };
+                video.play();
+            } catch (error) {
+                console.error('Error capturing image:', error);
+            }
+        });
+
+        searchButton.addEventListener('click', () => {
+            const searchText = searchInput.value;
+
+            // Search logic and display data in the table
+            // You need to implement the server-side and data retrieval logic here
+            // Example: Fetch search results and populate the table rows
+            fetch('/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ search_text: searchText }),
+            })
+            .then(response => response.json())
+            .then(searchResults => {
+                // Clear existing table rows
+                dataTable.innerHTML = '';
+
+                // Populate the table with search results
+                searchResults.forEach(result => {
+                    const row = dataTable.insertRow();
+                    const cellDateTime = row.insertCell(0);
+                    const cellName = row.insertCell(1);
+                    const cellPlace = row.insertCell(2);
+                    const cellPhoto = row.insertCell(3);
+                    // const cellQuantity = row.insertCell(4);
+
+                    cellDateTime.innerHTML = result.date_time;
+                    cellName.innerHTML = result.name;
+                    cellPlace.innerHTML = result.place;
+                    // Convert the local file path to a relative URL
+                    const imageRelativePath = result.photo.replace(/\\/g, '/');
+                    const imageURL = `/static/${imageRelativePath}`;
+                    cellPhoto.innerHTML = `<img src="${imageURL}" alt="Photo" width="100">`;
+
+                });
+                
+            })
+            .catch(error => {
+                console.error('Error searching data:', error);
+            });
+        });
+    </script>
+</body>
+</html>
